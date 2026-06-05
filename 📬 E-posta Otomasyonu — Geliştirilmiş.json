@@ -1,0 +1,662 @@
+{
+  "name": "📬 E-posta Otomasyonu — Geliştirilmiş",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// 1. Satır düzeltildi: Veri doğrudan 'text' içinden alınıyor\nconst raw = $input.first().json.text ? $input.first().json.text.trim() : \"\";\n\n// Markdown formatındaki ```json ve ``` işaretlerini temizler\nconst clean = raw.replace(/```json|```/g, '').trim();\n\ntry {\n    const parsed = JSON.parse(clean);\n    return [{ json: { ...parsed } }];\n} catch(e) {\n    // Eğer gelen metin JSON formatında değilse hata vermemesi için fallback\n    return [{ json: { is_spam: false, reason: 'parse_error' } }];\n}"
+      },
+      "id": "ad97459b-df5e-4cd6-947e-79976d0f060b",
+      "name": "🔍 Spam Sonucu Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "spam-check",
+              "leftValue": "={{ $json.is_spam }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "121b5647-c216-4087-bca6-7ceb98d1d05c",
+      "name": "❓ Spam mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').first().json.id }}",
+        "labelIds": [
+          "SPAM"
+        ]
+      },
+      "id": "b49ac948-463c-46d9-a678-8766f76610aa",
+      "name": "📁 Spam Arşivle",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        160
+      ],
+      "webhookId": "895faadc-fdf2-4e2b-b036-adad23b85cf0",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UtaeIUUEF4p5mG8u",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Spam e-postayı SPAM klasörüne taşır."
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || '';\nconst clean = raw.replace(/```json|```/g, '').trim();\n\ntry {\n  const parsed = JSON.parse(clean);\n  const trigger = $('Gmail Trigger').first().json;\n\n  return [{ json: {\n    category:   parsed.category   || 'diger',\n    priority:   parsed.priority   ?? 3,\n    summary:    parsed.summary    || trigger.subject,\n    event_date: parsed.event_date ?? null,\n    job_score:  parsed.job_score  ?? null,\n    reply:      parsed.reply      || '',        // ← EKLENDİ\n    from:       trigger.from,\n    subject:    trigger.subject,\n    snippet:    trigger.snippet   || '',\n    messageId:  trigger.id,\n    threadId:   trigger.threadId\n  }}];\n\n} catch(e) {\n  const trigger = $('Gmail Trigger').first().json;\n\n  return [{ json: {\n    category:   'diger',\n    priority:   2,\n    summary:    trigger.subject,\n    event_date: null,\n    job_score:  null,\n    reply:      '',                             // ← EKLENDİ\n    from:       trigger.from,\n    subject:    trigger.subject,\n    snippet:    trigger.snippet || '',\n    messageId:  trigger.id,\n    threadId:   trigger.threadId\n  }}];\n}"
+      },
+      "id": "c6186f3b-1590-4d9a-b93a-1e5f6616264e",
+      "name": "🔍 Kategori Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ $json.category === 'etkinlik' ? 0 : $json.category === 'yeni_ozellik' ? 1 : $json.category === 'egitim' ? 2 : $json.category === 'is_ilani' ? 3 : 4 }}"
+      },
+      "id": "25c754c5-cc2f-4b5a-aa51-884063563802",
+      "name": "⚡ Switch Kategori",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        2288,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "700dbe94-46be-4c17-a72c-89d29430dbe3",
+          "mode": "list",
+          "cachedResultName": "İletişim / Gelen Kutusu",
+          "cachedResultUrl": "https://app.notion.com/p/700dbe9446be4c17a72c89d29430dbe3"
+        },
+        "title": "={{ $json.summary }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Adı|title",
+              "title": "={{ $('Gmail Trigger').item.json.labels[1].name }}",
+              "emailValue": "={{ $json.from }}"
+            },
+            {
+              "key": "Kategori|select",
+              "selectValue": "={{ $json.category }}"
+            },
+            {
+              "key": "Öncelik|number",
+              "numberValue": "={{ $json.priority }}"
+            },
+            {
+              "key": "Gönderen|email",
+              "emailValue": "={{ $('Gmail Trigger').item.json.From }}"
+            },
+            {
+              "key": "Konu|rich_text",
+              "richText": true,
+              "text": {
+                "text": [
+                  {
+                    "text": "={{ $('Gmail Trigger').item.json.Subject }}",
+                    "annotationUi": {}
+                  }
+                ]
+              }
+            },
+            {
+              "key": "Tarih|date",
+              "date": "2026-06-04T01:17:35"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6f3360b2-be0f-4d2c-ba81-5b0e78c4fa03",
+      "name": "🔧 Notion Kaydet",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        240
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "OidsOvfKBhiQ8EC8",
+          "name": "Notion account 3"
+        }
+      },
+      "notes": "⚠️ YOUR_NOTION_FEATURE_DB_ID yerine kendi Notion DB id'nizi yazın."
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger').first().json.id }}",
+        "labelIds": [
+          "CATEGORY_SOCIAL"
+        ]
+      },
+      "id": "36c59208-7a36-417e-9c43-34fbfb6399d5",
+      "name": "📚 Eğitim Etiketi",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        432
+      ],
+      "webhookId": "259505db-5af6-4c9d-a01e-8faeb2879ec5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UtaeIUUEF4p5mG8u",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "⚠️ Label_Egitim yerine Gmail'de oluşturduğunuz etiketin ID'sini yazın. Gmail > Ayarlar > Etiketler'den bulabilirsiniz."
+    },
+    {
+      "parameters": {
+        "chatId": "8892021333",
+        "text": "=🎯 *Yeni İş İlanı*\n\n📋 *Konu:* {{ $('Gmail Trigger').first().json.subject }}\n👤 *Gönderen:* {{ $('Gmail Trigger').first().json.from }}\n⭐ *Skor:* {{ $json.job_score }}/5\n📝 *Özet:* {{ $json.summary }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2c06fb99-a608-4fbe-99fd-feb2d0c4fb9c",
+      "name": "💼 Telegram İş İlanı",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        624
+      ],
+      "webhookId": "44f526d3-cf2f-4610-ab2c-eae847315ec6",
+      "credentials": {
+        "telegramApi": {
+          "id": "uC36VfEyYfd3qBC4",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "⚠️ YOUR_TELEGRAM_CHAT_ID yerine kendi chat ID'nizi yazın. @userinfobot'tan öğrenebilirsiniz."
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "993ea09c-87c0-433d-bd3b-29fc8821b50e",
+          "mode": "list",
+          "cachedResultName": "n8n Kayıtları",
+          "cachedResultUrl": "https://app.notion.com/p/993ea09c87c0433dbd3b29fc8821b50e"
+        },
+        "title": "={{ $json.summary }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{ $('Gmail Trigger').item.json.Subject }}"
+            },
+            {
+              "key": "Özet|rich_text",
+              "textContent": "={{ $json.summary }}"
+            },
+            {
+              "key": "Öncelik|number",
+              "numberValue": "={{ $json.priority }}"
+            },
+            {
+              "key": "Gönderen|email",
+              "emailValue": "={{ $('Gmail Trigger').item.json.From }}"
+            },
+            {
+              "key": "Tarih|date"
+            },
+            {
+              "key": "Durum|select",
+              "selectValue": "=Yeni"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eeeae094-2362-482b-943e-ecd4f5fcbf6c",
+      "name": "📝 Haftalık Digest",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        2624,
+        864
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "ak8xlUbzb3cY0YzD",
+          "name": "Notion account 2"
+        }
+      },
+      "notes": "⚠️ YOUR_NOTION_DIGEST_DB_ID yerine kendi Notion DB id'nizi yazın."
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Gelen yapay zeka cevabını doğrudan 'text' alanından güvenle al\nconst raw = $input.first().json.text ? $input.first().json.text.trim() : '';\n\n// 2. Kategori Parse düğümündeki verileri n8n Code Node kurallarına göre çek\nlet mergeData = {};\ntry {\n  mergeData = $('🔍 Kategori Parse').first().json;\n} catch (e) {\n  // Eğer o düğümden veri okunamazsa sistemin tamamen çökmesini engelle\n  mergeData = {};\n}\n\n// 3. İki veriyi birleştirip bir sonraki düğüme (Gmail Cevap Gönder) fırlat\nreturn [{ \n  json: { \n    reply_text: raw, \n    ...mergeData \n  } \n}];"
+      },
+      "id": "66bb4b71-a097-42b5-950e-4eace3c97168",
+      "name": "🔍 Cevap Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $json.messageId }}",
+        "message": "={{ $('Basic LLM Chain').item.json.text }}",
+        "options": {}
+      },
+      "id": "181f89af-2d6a-427f-aa1d-d5d8b7b5183e",
+      "name": "✉️ Gmail Cevap Gönder",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        -176
+      ],
+      "webhookId": "e84e9519-5c4d-4b69-9c90-7870c0205952",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UtaeIUUEF4p5mG8u",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Gonderen: {{ $('Gmail Trigger').item.json.From }}\nKonu: {{ $('Gmail Trigger').item.json.Subject }}\nIcerik: {{ ($('Gmail Trigger').first().json.snippet || '').slice(0,1200) }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Sen bir e-posta asistanısın. SADECE JSON döndür, başka hiçbir şey yazma.\nMarkdown, backtick, açıklama YASAK.\n\n{\"category\":\"etkinlik|yeni_ozellik|egitim|is_ilani|diger\",\"priority\":1-5,\"summary\":\"maks 10 kelime Türkçe\",\"event_date\":\"YYYY-MM-DD veya null\",\"job_score\":1-5 veya null,\"reply\":\"Kısa profesyonel Türkçe cevap, maks 2 cümle\"}\n\n── KATEGORİ ──\netkinlik     → meetup, konferans, webinar, summit, hackathon\nyeni_ozellik → launch, release, beta, update, changelog\negitim       → kurs, bootcamp, workshop, tutorial, cohort\nis_ilani     → job, hiring, pozisyon, kariyer, başvur\ndiger        → diğer her şey\n\n── ÖNCELİK ──\n5 → Bugün/yarın deadline\n4 → Bu hafta (1-7 gün)\n3 → Bu ay (7-30 gün)\n2 → Genel bilgi\n1 → Newsletter, düşük değer\n\n── REPLY KURALI ──\netkinlik     → Takvime eklendi, teşekkürler.\nyeni_ozellik → İnceleyeceğim, teşekkürler.\negitim       → İlginç fırsat, teşekkürler.\nis_ilani     → job_score≥4 ise ilgi belirt, <4 ise nazikçe reddet\ndiger        → Kısa genel teşekkür"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1568,
+        400
+      ],
+      "id": "8a95cb4b-fa40-4ff5-9f8b-bca240ea1629",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "openai/gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "openai/gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1472,
+        688
+      ],
+      "id": "32c80068-faac-4bae-909b-386c0b84afbe",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Z5yT8Zupm4SsAkHE",
+          "name": "OpenAI account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "bb0e58c1b644696b5596a9543f50315baeb461696034f3548644660c793d0fae@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "gmail analizleri"
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        2624,
+        64
+      ],
+      "id": "eb082cf1-7115-480e-b68e-84f9bcd6c8c8",
+      "name": "Create an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "7bLcFD8g9Bg2vKrc",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        768,
+        384
+      ],
+      "id": "01e4938d-8935-495b-891f-5812f6315d08",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "UtaeIUUEF4p5mG8u",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c67c2b4d-8ae6-4afe-bdb7-a07b8b2c681a",
+              "leftValue": "$json.from ",
+              "rightValue": "noreply ",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "8415d230-d93d-41c2-92bd-187331ce9fe7",
+              "leftValue": "$json.from ",
+              "rightValue": "notification",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "cc8a2e25-88d7-4962-9b5a-79152c6f64fc",
+              "leftValue": "$json.from",
+              "rightValue": "no-reply",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "7e9f01fa-b851-4d7f-90d0-0af59f5e727d",
+              "leftValue": "$json.from",
+              "rightValue": "mailer-daemon",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2768,
+        -160
+      ],
+      "id": "f351c23e-a6c3-4fc1-8086-714ae5b94f86",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "🔍 Spam Sonucu Parse": {
+      "main": [
+        [
+          {
+            "node": "❓ Spam mı?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❓ Spam mı?": {
+      "main": [
+        [
+          {
+            "node": "📁 Spam Arşivle",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Kategori Parse": {
+      "main": [
+        [
+          {
+            "node": "⚡ Switch Kategori",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🔍 Cevap Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔧 Notion Kaydet": {
+      "main": [
+        []
+      ]
+    },
+    "🔍 Cevap Parse": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚡ Switch Kategori": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔧 Notion Kaydet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📚 Eğitim Etiketi",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "💼 Telegram İş İlanı",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📝 Haftalık Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📚 Eğitim Etiketi": {
+      "main": [
+        []
+      ]
+    },
+    "💼 Telegram İş İlanı": {
+      "main": [
+        []
+      ]
+    },
+    "📝 Haftalık Digest": {
+      "main": [
+        []
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "🔍 Kategori Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        []
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "🔍 Spam Sonucu Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✉️ Gmail Cevap Gönder": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "✉️ Gmail Cevap Gönder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "Qv4AMXx16SKlY5W8",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "403665ce-e333-4a75-99b7-6b43dc7f6c88",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c8d9058cfc10e44bb9b1bc31a19bb4e1c9dbc52a39f4160fb5a65f6b11d96237"
+  },
+  "id": "5kfMjoE0X2RXPasJ",
+  "tags": []
+}
